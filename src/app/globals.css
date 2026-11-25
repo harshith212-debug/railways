@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: #F1F5F9;
+    color: #0F172A;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+.font-mono-rail {
+  font-family: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Custom scrollbar for horizontal rake diagram */
+.rake-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+.rake-scroll::-webkit-scrollbar-track {
+  background: #e2e8f0;
+  border-radius: 9999px;
+}
+.rake-scroll::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 9999px;
+}
+
+/* Clean Print CSS for Electronic Reservation Slip (ERS) / PDF Export */
+@page {
+  size: A4;
+  margin: 12mm;
+}
+
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only-ers {
+    display: block !important;
+    box-shadow: none !important;
+    border: 1px solid #cbd5e1 !important;
+    margin: 0 !important;
+    padding: 16px !important;
+    width: 100% !important;
+  }
+}

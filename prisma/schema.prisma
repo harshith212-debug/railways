@@ -1,0 +1,476 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -----------------------------------------------------------------------------
+// ENUMS
+// -----------------------------------------------------------------------------
+
+enum WalletTxnType {
+  CREDIT
+  DEBIT
+  REFUND
+  UTS_CASHBACK
+}
+
+enum TrainType {
+  VANDE_BHARAT
+  RAJDHANI
+  SHATABDI
+  SUPERFAST
+  EXPRESS
+  MAIL
+}
+
+enum CoachClass {
+  ONE_A     // 1A - First AC
+  TWO_A     // 2A - Second AC
+  THREE_A   // 3A - Third AC
+  THREE_E   // 3E - AC 3 Economy
+  CC        // CC - AC Chair Car
+  EC        // EC - Executive Chair Car
+  SL        // SL - Sleeper
+  TWO_S     // 2S - Second Sitting
+  ENG       // Locomotive
+  SLR       // Guard / Luggage / Divyangjan
+  PC        // Pantry Car
+}
+
+enum BerthType {
+  LB  // Lower Berth
+  MB  // Middle Berth
+  UB  // Upper Berth
+  SL  // Side Lower
+  SU  // Side Upper
+  WS  // Window Seat
+  MS  // Middle Seat
+  AS  // Aisle Seat
+}
+
+enum QuotaCode {
+  GN  // General
+  TQ  // Tatkal
+  LD  // Ladies
+  SS  // Senior Citizen / Lower Berth
+}
+
+enum ScheduleStatus {
+  ON_TIME
+  DELAYED
+  RESCHEDULED
+  CANCELLED
+  COMPLETED
+}
+
+enum BookingStatus {
+  CONFIRMED
+  RAC
+  WAITLISTED
+  PARTIALLY_CANCELLED
+  CANCELLED
+}
+
+enum PassengerStatus {
+  CNF
+  RAC
+  WL
+  CAN
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  TRANSGENDER
+}
+
+enum UtsCategory {
+  UNRESERVED_JOURNEY
+  PLATFORM_TICKET
+  SEASON_PASS
+}
+
+enum EcateringStatus {
+  PLACED
+  CONFIRMED
+  PREPARING
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+
+enum ComplaintCategory {
+  COACH_CLEANLINESS
+  WATER_AVAILABILITY
+  ELECTRICAL_AC
+  SECURITY
+  CATERING_QUALITY
+  MEDICAL_EMERGENCY
+  STAFF_BEHAVIOUR
+}
+
+enum ComplaintStatus {
+  OPEN
+  ASSIGNED
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+// -----------------------------------------------------------------------------
+// 1. USER
+// -----------------------------------------------------------------------------
+model User {
+  id              String   @id @default(cuid())
+  irctcUsername   String   @unique
+  fullName        String
+  email           String   @unique
+  phone           String   @unique
+  passwordHash    String
+  mpinHash        String
+  aadhaarVerified Boolean  @default(false)
+  walletBalance   Decimal  @default(0.00) @db.Decimal(12, 2)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  masterPassengers   MasterPassenger[]
+  walletTransactions WalletTransaction[]
+  bookings           Booking[]
+  utsTickets         UtsTicket[]
+  ecateringOrders    EcateringOrder[]
+  railMadadComplaints RailMadadComplaint[]
+
+  @@index([irctcUsername])
+  @@index([phone])
+}
+
+// -----------------------------------------------------------------------------
+// 2. MASTER PASSENGER
+// -----------------------------------------------------------------------------
+model MasterPassenger {
+  id              String     @id @default(cuid())
+  userId          String
+  fullName        String
+  age             Int
+  gender          Gender
+  berthPreference BerthType?
+  idCardType      String?
+  idCardNumber    String?
+  isSeniorCitizen Boolean    @default(false)
+  createdAt       DateTime   @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// -----------------------------------------------------------------------------
+// 3. WALLET TRANSACTION (Immutable Ledger)
+// -----------------------------------------------------------------------------
+model WalletTransaction {
+  id           String        @id @default(cuid())
+  userId       String
+  txnType      WalletTxnType
+  amount       Decimal       @db.Decimal(12, 2)
+  cashbackAmt  Decimal       @default(0.00) @db.Decimal(10, 2)
+  balanceAfter Decimal       @db.Decimal(12, 2)
+  referenceId  String        // PNR, UTS Number, or Razorpay/UPI ref
+  description  String
+  createdAt    DateTime      @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([referenceId])
+}
+
+// -----------------------------------------------------------------------------
+// 4. STATION
+// -----------------------------------------------------------------------------
+model Station {
+  stationCode  String  @id @db.VarChar(8)
+  stationName  String
+  city         String
+  state        String
+  railwayZone  String  @db.VarChar(10)
+  numPlatforms Int
+  latitude     Float
+  longitude    Float
+
+  routeStops       TrainRoute[]
+  bookingsFrom     Booking[] @relation("BookingFromStation")
+  bookingsTo       Booking[] @relation("BookingToStation")
+  bookingsBoarding Booking[] @relation("BookingBoardingStation")
+  utsSource        UtsTicket[] @relation("UtsSourceStation")
+  utsDest          UtsTicket[] @relation("UtsDestStation")
+  liveLastCrossed  LiveTrainTracking[] @relation("LiveLastCrossed")
+  liveNextStation  LiveTrainTracking[] @relation("LiveNextStation")
+  ecateringStation EcateringOrder[]
+
+  @@index([city])
+  @@index([railwayZone])
+}
+
+// -----------------------------------------------------------------------------
+// 5. TRAIN
+// -----------------------------------------------------------------------------
+model Train {
+  trainNumber  String    @id @db.VarChar(10)
+  trainName    String
+  trainType    TrainType
+  runningDays  String    @db.VarChar(7) // e.g. "1111111" (Mon..Sun)
+  hasPantry    Boolean   @default(true)
+  avgSpeedKmph Int
+
+  routes     TrainRoute[]
+  coaches    TrainCoach[]
+  schedules  TrainSchedule[]
+  complaints RailMadadComplaint[]
+
+  @@index([trainName])
+}
+
+// -----------------------------------------------------------------------------
+// 6. TRAIN ROUTE
+// -----------------------------------------------------------------------------
+model TrainRoute {
+  id                   String  @id @default(cuid())
+  trainNumber          String  @db.VarChar(10)
+  stationCode          String  @db.VarChar(8)
+  stopSequence         Int
+  dayOfJourney         Int
+  scheduledArrival     String? @db.VarChar(5) // "HH:MM" or null for origin
+  scheduledDeparture   String? @db.VarChar(5) // "HH:MM" or null for destination
+  haltMinutes          Int     @default(0)
+  distanceFromOriginKm Int
+  defaultPlatform      Int     @default(1)
+
+  train   Train   @relation(fields: [trainNumber], references: [trainNumber], onDelete: Cascade)
+  station Station @relation(fields: [stationCode], references: [stationCode], onDelete: Restrict)
+
+  @@unique([trainNumber, stopSequence])
+  @@unique([trainNumber, stationCode])
+  @@index([trainNumber, stopSequence])
+  @@index([stationCode])
+}
+
+// -----------------------------------------------------------------------------
+// 7. TRAIN COACH & COACH SEAT
+// -----------------------------------------------------------------------------
+model TrainCoach {
+  id           String     @id @default(cuid())
+  trainNumber  String     @db.VarChar(10)
+  coachCode    String     @db.VarChar(6) // e.g. "ENG", "B1", "A1", "H1", "S1", "C1", "SLR"
+  coachClass   CoachClass
+  rakePosition Int        // 1..24 from ENG to SLR
+  totalBerths  Int
+
+  train Train       @relation(fields: [trainNumber], references: [trainNumber], onDelete: Cascade)
+  seats CoachSeat[]
+
+  @@unique([trainNumber, rakePosition])
+  @@unique([trainNumber, coachCode])
+  @@index([trainNumber, rakePosition])
+}
+
+model CoachSeat {
+  id          String    @id @default(cuid())
+  coachId     String
+  berthNumber Int
+  berthType   BerthType
+  cabinNumber Int
+
+  coach TrainCoach @relation(fields: [coachId], references: [id], onDelete: Cascade)
+
+  @@unique([coachId, berthNumber])
+  @@index([coachId, berthType])
+}
+
+// -----------------------------------------------------------------------------
+// 8. TRAIN SCHEDULE (Daily Running Instance)
+// -----------------------------------------------------------------------------
+model TrainSchedule {
+  id            String         @id @default(cuid())
+  trainNumber   String         @db.VarChar(10)
+  journeyDate   DateTime       @db.Date
+  chartPrepared Boolean        @default(false)
+  status        ScheduleStatus @default(ON_TIME)
+
+  train            Train              @relation(fields: [trainNumber], references: [trainNumber], onDelete: Cascade)
+  seatAvailability SeatAvailability[]
+  bookings         Booking[]
+  liveTracking     LiveTrainTracking?
+
+  @@unique([trainNumber, journeyDate])
+  @@index([journeyDate, trainNumber])
+}
+
+// -----------------------------------------------------------------------------
+// 9. SEAT AVAILABILITY
+// -----------------------------------------------------------------------------
+model SeatAvailability {
+  id             String     @id @default(cuid())
+  scheduleId     String
+  coachClass     CoachClass
+  quota          QuotaCode
+  availableSeats Int
+  racCount       Int        @default(0)
+  wlCount        Int        @default(0)
+  baseFare       Decimal    @db.Decimal(10, 2)
+
+  schedule TrainSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@unique([scheduleId, coachClass, quota])
+  @@index([scheduleId, coachClass, quota])
+}
+
+// -----------------------------------------------------------------------------
+// 10. BOOKING
+// -----------------------------------------------------------------------------
+model Booking {
+  pnr             String        @id @db.VarChar(10)
+  userId          String
+  scheduleId      String
+  fromStation     String        @db.VarChar(8)
+  toStation       String        @db.VarChar(8)
+  boardingStation String        @db.VarChar(8)
+  coachClass      CoachClass
+  quota           QuotaCode
+  totalFare       Decimal       @db.Decimal(10, 2)
+  convenienceFee  Decimal       @db.Decimal(8, 2)
+  gstAmount       Decimal       @db.Decimal(8, 2)
+  bookingStatus   BookingStatus @default(CONFIRMED)
+  paymentMode     String        @default("R_WALLET")
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  user            User               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  schedule        TrainSchedule      @relation(fields: [scheduleId], references: [id], onDelete: Restrict)
+  fromStn         Station            @relation("BookingFromStation", fields: [fromStation], references: [stationCode])
+  toStn           Station            @relation("BookingToStation", fields: [toStation], references: [stationCode])
+  boardingStn     Station            @relation("BookingBoardingStation", fields: [boardingStation], references: [stationCode])
+  passengers      BookingPassenger[]
+  ecateringOrders EcateringOrder[]
+  complaints      RailMadadComplaint[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([scheduleId])
+}
+
+// -----------------------------------------------------------------------------
+// 11. BOOKING PASSENGER
+// -----------------------------------------------------------------------------
+model BookingPassenger {
+  passengerId     String          @id @default(cuid())
+  pnr             String          @db.VarChar(10)
+  name            String
+  age             Int
+  gender          Gender
+  berthPreference BerthType?
+  bookingStatus   PassengerStatus
+  currentStatus   PassengerStatus
+  allocatedCoach  String?         @db.VarChar(6)
+  allocatedBerth  Int?
+  berthType       BerthType?
+  racOrWlNumber   Int?
+
+  booking Booking @relation(fields: [pnr], references: [pnr], onDelete: Cascade)
+
+  @@index([pnr])
+  @@index([currentStatus, racOrWlNumber])
+}
+
+// -----------------------------------------------------------------------------
+// 12. UTS TICKET (Paperless QR Pass)
+// -----------------------------------------------------------------------------
+model UtsTicket {
+  utsNumber       String      @id @db.VarChar(16)
+  userId          String
+  ticketCategory  UtsCategory
+  sourceStation   String      @db.VarChar(8)
+  destStation     String?     @db.VarChar(8)
+  adultCount      Int         @default(1)
+  childCount      Int         @default(0)
+  farePaid        Decimal     @db.Decimal(10, 2)
+  discountApplied Decimal     @default(0.00) @db.Decimal(10, 2)
+  qrSignatureHash String
+  validFrom       DateTime    @default(now())
+  validUntil      DateTime
+  createdAt       DateTime    @default(now())
+
+  user   User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  source Station  @relation("UtsSourceStation", fields: [sourceStation], references: [stationCode])
+  dest   Station? @relation("UtsDestStation", fields: [destStation], references: [stationCode])
+
+  @@index([userId, validUntil(sort: Desc)])
+}
+
+// -----------------------------------------------------------------------------
+// 13. LIVE TRAIN TRACKING (NTES)
+// -----------------------------------------------------------------------------
+model LiveTrainTracking {
+  id                 String   @id @default(cuid())
+  scheduleId         String   @unique
+  lastCrossedStation String   @db.VarChar(8)
+  nextStation        String   @db.VarChar(8)
+  delayMinutes       Int      @default(0)
+  currentLat         Float
+  currentLng         Float
+  updatedAt          DateTime @updatedAt
+
+  schedule TrainSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  lastStn  Station       @relation("LiveLastCrossed", fields: [lastCrossedStation], references: [stationCode])
+  nextStn  Station       @relation("LiveNextStation", fields: [nextStation], references: [stationCode])
+
+  @@index([scheduleId])
+}
+
+// -----------------------------------------------------------------------------
+// 14. E-CATERING ORDER & RAIL MADAD COMPLAINT
+// -----------------------------------------------------------------------------
+model EcateringOrder {
+  id              String          @id @default(cuid())
+  userId          String
+  pnr             String          @db.VarChar(10)
+  stationCode     String          @db.VarChar(8)
+  vendorName      String
+  itemsJson       Json            // [{ name, qty, price }]
+  totalAmount     Decimal         @db.Decimal(10, 2)
+  deliveryCoach   String          @db.VarChar(6)
+  deliveryBerth   Int
+  status          EcateringStatus @default(CONFIRMED)
+  createdAt       DateTime        @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  booking Booking @relation(fields: [pnr], references: [pnr], onDelete: Cascade)
+  station Station @relation(fields: [stationCode], references: [stationCode])
+
+  @@index([pnr])
+  @@index([userId])
+}
+
+model RailMadadComplaint {
+  id          String            @id @default(cuid())
+  referenceNo String            @unique @db.VarChar(16)
+  userId      String
+  pnr         String?           @db.VarChar(10)
+  trainNumber String            @db.VarChar(10)
+  category    ComplaintCategory
+  description String
+  coachNumber String?           @db.VarChar(6)
+  status      ComplaintStatus   @default(OPEN)
+  resolution  String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  booking Booking? @relation(fields: [pnr], references: [pnr], onDelete: SetNull)
+  train   Train    @relation(fields: [trainNumber], references: [trainNumber], onDelete: Restrict)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([pnr])
+}
