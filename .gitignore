@@ -19,6 +19,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# large raw github datasets (sourced from origin/master)
+/data/
+
 # local env files
 .env
 .env*.local

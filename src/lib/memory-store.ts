@@ -30,6 +30,7 @@ import {
   buildSeatListForCoach,
   getDateStringOffset,
 } from "./seed-data";
+import { getRailwayDataset } from "./github-dataset-loader";
 import {
   CLASS_DISPLAY_MAP,
   addMinutesToHHMM,
@@ -357,8 +358,12 @@ export const memoryStore = {
 
   getBootstrapData() {
     const s = getStore();
+    const ds = getRailwayDataset();
     return {
       mode: "FALLBACK_IN_MEMORY" as const,
+      fromGithubDataset: ds.fromGithubFiles,
+      totalStationsCount: ds.stations.length,
+      totalTrainsCount: ds.trains.length,
       user: s.user,
       masterPassengers: s.masterPassengers,
       walletTransactions: s.walletTransactions,
@@ -401,11 +406,18 @@ export const memoryStore = {
 
   searchTrains(params: { from: string; to: string; date: string; quota: QuotaCode }): TrainSearchResultDTO[] {
     const s = getStore();
+    const ds = getRailwayDataset();
     const { from, to, date, quota } = params;
-    const stationMap = new Map(s.stations.map((st) => [st.stationCode, st]));
     const results: TrainSearchResultDTO[] = [];
 
-    for (const train of SEED_TRAINS) {
+    const fromTrains = ds.stationToTrains.get(from) || [];
+    const toTrainSet = new Set(ds.stationToTrains.get(to) || []);
+    const candidateTrainNumbers = fromTrains.filter((tn) => toTrainSet.has(tn));
+
+    for (const tn of candidateTrainNumbers) {
+      const train = ds.trainMap.get(tn);
+      if (!train) continue;
+
       const fromStop = train.stops.find((st) => st.stationCode === from);
       const toStop = train.stops.find((st) => st.stationCode === to);
       if (!fromStop || !toStop || fromStop.stopSequence >= toStop.stopSequence) {
@@ -416,7 +428,6 @@ export const memoryStore = {
         (sch) => sch.trainNumber === train.trainNumber && sch.journeyDate === date
       );
       if (!schedule) {
-        // Dynamically provision schedule if user picks a date beyond 7 days
         schedule = {
           id: `sch_${train.trainNumber}_${date}`,
           trainNumber: train.trainNumber,
@@ -428,14 +439,12 @@ export const memoryStore = {
         s.availabilities.push(...buildInitialAvailabilityForSchedule(schedule.id, train));
       }
 
-      const distanceKm = toStop.distanceFromOriginKm - fromStop.distanceFromOriginKm;
+      const distanceKm = Math.max(20, toStop.distanceFromOriginKm - fromStop.distanceFromOriginKm);
       const depTime = fromStop.scheduledDeparture || fromStop.scheduledArrival || "00:00";
       const arrTime = toStop.scheduledArrival || toStop.scheduledDeparture || "00:00";
-      const durationMinutes = computeDurationMinutes(
-        depTime,
-        fromStop.dayOfJourney,
-        arrTime,
-        toStop.dayOfJourney
+      const durationMinutes = Math.max(
+        30,
+        computeDurationMinutes(depTime, fromStop.dayOfJourney, arrTime, toStop.dayOfJourney)
       );
 
       const schAvails = s.availabilities.filter(
@@ -473,16 +482,18 @@ export const memoryStore = {
         hasPantry: train.hasPantry,
         journeyDate: date,
         fromStation: from,
-        fromStationName: stationMap.get(from)?.stationName ?? from,
+        fromStationName: ds.stationMap.get(from)?.stationName ?? from,
         toStation: to,
-        toStationName: stationMap.get(to)?.stationName ?? to,
+        toStationName: ds.stationMap.get(to)?.stationName ?? to,
         departureTime: depTime,
         arrivalTime: arrTime,
         durationMinutes,
         distanceKm,
-        dayDiff: toStop.dayOfJourney - fromStop.dayOfJourney,
+        dayDiff: Math.max(0, toStop.dayOfJourney - fromStop.dayOfJourney),
         availabilities,
       });
+
+      if (results.length >= 40) break;
     }
 
     return results;
@@ -511,7 +522,8 @@ export const memoryStore = {
     const schedule = s.schedules.find((sch) => sch.id === payload.scheduleId);
     if (!schedule) throw new Error("Train schedule not found.");
 
-    const train = SEED_TRAINS.find((t) => t.trainNumber === schedule.trainNumber);
+    const ds = getRailwayDataset();
+    const train = ds.trainMap.get(schedule.trainNumber);
     if (!train) throw new Error("Train not found.");
 
     const fromStop = train.stops.find((st) => st.stationCode === payload.fromStation);
@@ -665,7 +677,7 @@ export const memoryStore = {
       });
     }
 
-    const stationMap = new Map(s.stations.map((st) => [st.stationCode, st]));
+    const stationMap = ds.stationMap;
     const booking: BookingDTO = {
       pnr,
       userId: s.user.id,
@@ -816,7 +828,8 @@ export const memoryStore = {
     childCount: number;
   }) {
     const s = getStore();
-    const stationMap = new Map(s.stations.map((st) => [st.stationCode, st]));
+    const ds = getRailwayDataset();
+    const stationMap = ds.stationMap;
     const src = stationMap.get(payload.sourceStation);
     if (!src) throw new Error("Invalid source station.");
 
@@ -914,7 +927,8 @@ export const memoryStore = {
 
   getLiveStatus(trainNumber: string): LiveTrainStatusDTO {
     const s = getStore();
-    const train = SEED_TRAINS.find((t) => t.trainNumber === trainNumber);
+    const ds = getRailwayDataset();
+    const train = ds.trainMap.get(trainNumber);
     if (!train) throw new Error(`Train ${trainNumber} not found.`);
 
     const today = getDateStringOffset(0);
@@ -930,7 +944,7 @@ export const memoryStore = {
       s.liveTrackings.push(live);
     }
 
-    const stationMap = new Map(s.stations.map((st) => [st.stationCode, st]));
+    const stationMap = ds.stationMap;
     const lastIdx = Math.min(live.lastCrossedIndex, train.stops.length - 1);
     const nextIdx = Math.min(lastIdx + 1, train.stops.length - 1);
 
@@ -983,7 +997,8 @@ export const memoryStore = {
 
   simulateNextStop(trainNumber: string): LiveTrainStatusDTO {
     const s = getStore();
-    const train = SEED_TRAINS.find((t) => t.trainNumber === trainNumber);
+    const ds = getRailwayDataset();
+    const train = ds.trainMap.get(trainNumber);
     if (!train) throw new Error(`Train ${trainNumber} not found.`);
 
     const today = getDateStringOffset(0);
@@ -1016,7 +1031,8 @@ export const memoryStore = {
 
   getCoachMap(trainNumber: string): { trainNumber: string; trainName: string; coaches: TrainCoachDTO[] } {
     const s = getStore();
-    const train = SEED_TRAINS.find((t) => t.trainNumber === trainNumber);
+    const ds = getRailwayDataset();
+    const train = ds.trainMap.get(trainNumber);
     if (!train) throw new Error(`Train ${trainNumber} not found.`);
 
     const today = getDateStringOffset(0);
@@ -1129,7 +1145,8 @@ export const memoryStore = {
     coachNumber?: string | null;
   }): RailMadadComplaintDTO {
     const s = getStore();
-    const train = SEED_TRAINS.find((t) => t.trainNumber === payload.trainNumber);
+    const ds = getRailwayDataset();
+    const train = ds.trainMap.get(payload.trainNumber);
     if (!train) throw new Error("Invalid train number.");
 
     const complaint: RailMadadComplaintDTO = {

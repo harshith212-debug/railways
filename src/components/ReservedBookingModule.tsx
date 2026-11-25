@@ -25,6 +25,7 @@ import {
   TrainSearchResultDTO,
 } from "@/lib/types";
 import { CLASS_FULL_NAME, isAcClass } from "@/lib/railway-logic";
+import StationAutocomplete from "./StationAutocomplete";
 
 interface ReservedBookingModuleProps {
   stations: StationDTO[];
@@ -233,18 +234,12 @@ export default function ReservedBookingModule({
 
         <form onSubmit={handleSearch} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
           <div className="md:col-span-3">
-            <label className="block text-xs font-semibold text-slate-600 mb-1">From Station</label>
-            <select
+            <StationAutocomplete
+              label="From Station (8,990+ Stations)"
               value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#134074]"
-            >
-              {stations.map((s) => (
-                <option key={s.stationCode} value={s.stationCode}>
-                  {s.stationCode} — {s.stationName}
-                </option>
-              ))}
-            </select>
+              onChange={setFrom}
+              initialStations={stations}
+            />
           </div>
 
           <div className="md:col-span-1 flex justify-center">
@@ -259,18 +254,12 @@ export default function ReservedBookingModule({
           </div>
 
           <div className="md:col-span-3">
-            <label className="block text-xs font-semibold text-slate-600 mb-1">To Station</label>
-            <select
+            <StationAutocomplete
+              label="To Station (8,990+ Stations)"
               value={to}
-              onChange={(e) => setTo(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#134074]"
-            >
-              {stations.map((s) => (
-                <option key={s.stationCode} value={s.stationCode}>
-                  {s.stationCode} — {s.stationName}
-                </option>
-              ))}
-            </select>
+              onChange={setTo}
+              initialStations={stations}
+            />
           </div>
 
           <div className="md:col-span-2">

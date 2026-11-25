@@ -45,6 +45,8 @@ export default function RailYatraDashboardPage() {
   const [walletTransactions, setWalletTransactions] = useState<WalletTransactionDTO[]>([]);
   const [stations, setStations] = useState<StationDTO[]>([]);
   const [trains, setTrains] = useState<TrainDTO[]>([]);
+  const [totalStationsCount, setTotalStationsCount] = useState<number>(0);
+  const [totalTrainsCount, setTotalTrainsCount] = useState<number>(0);
   const [bookings, setBookings] = useState<BookingDTO[]>([]);
   const [utsTickets, setUtsTickets] = useState<UtsTicketDTO[]>([]);
   const [ecateringOrders, setEcateringOrders] = useState<EcateringOrderDTO[]>([]);
@@ -61,6 +63,8 @@ export default function RailYatraDashboardPage() {
         setWalletTransactions(data.walletTransactions || []);
         setStations(data.stations || []);
         setTrains(data.trains || []);
+        setTotalStationsCount(data.totalStationsCount || (data.stations || []).length);
+        setTotalTrainsCount(data.totalTrainsCount || (data.trains || []).length);
         setBookings(data.bookings || []);
         setUtsTickets(data.utsTickets || []);
         setEcateringOrders(data.ecateringOrders || []);
@@ -254,7 +258,8 @@ export default function RailYatraDashboardPage() {
                       Live NTES Radar
                     </div>
                     <div className="text-sm font-bold text-white">
-                      {trains.length} Trains Tracked
+                      {totalTrainsCount.toLocaleString("en-IN")} Trains •{" "}
+                      {totalStationsCount.toLocaleString("en-IN")} Stns
                     </div>
                   </div>
                 </div>

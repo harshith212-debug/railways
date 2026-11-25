@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { QrCode, Timer, Sparkles, CheckCircle2, Ticket } from "lucide-react";
 import { StationDTO, UtsCategoryCode, UtsTicketDTO } from "@/lib/types";
+import StationAutocomplete from "./StationAutocomplete";
 
 interface UtsQrModuleProps {
   stations: StationDTO[];
@@ -129,38 +130,22 @@ export default function UtsQrModule({
 
         <form onSubmit={handleBookUts} className="space-y-3.5">
           <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">
-              {category === "PLATFORM_TICKET" ? "Station" : "From Station"}
-            </label>
-            <select
+            <StationAutocomplete
+              label={category === "PLATFORM_TICKET" ? "Station" : "From Station"}
               value={sourceStation}
-              onChange={(e) => setSourceStation(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#134074]"
-            >
-              {stations.map((s) => (
-                <option key={s.stationCode} value={s.stationCode}>
-                  {s.stationCode} — {s.stationName}
-                </option>
-              ))}
-            </select>
+              onChange={setSourceStation}
+              initialStations={stations}
+            />
           </div>
 
           {category !== "PLATFORM_TICKET" && (
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">
-                Destination Station
-              </label>
-              <select
+              <StationAutocomplete
+                label="Destination Station"
                 value={destStation}
-                onChange={(e) => setDestStation(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#134074]"
-              >
-                {stations.map((s) => (
-                  <option key={s.stationCode} value={s.stationCode}>
-                    {s.stationCode} — {s.stationName}
-                  </option>
-                ))}
-              </select>
+                onChange={setDestStation}
+                initialStations={stations}
+              />
             </div>
           )}
 
